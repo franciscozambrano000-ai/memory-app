@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Memory Cards · Node.js Lab</title>
+  <!-- En Apps Script tenías que "incluir" CSS con <?!= include('css') ?>.
+       Aquí es HTML normal: el navegador pide style.css a Express
+       y Express se lo entrega desde /public (gracias a express.static). -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <main class="tablero-wrap">
+    <header>
+      <p class="etiqueta">LABORATORIO · HTML ↔ EXPRESS</p>
+      <h1>Memory Cards</h1>
+      <p class="subtitulo">Haz clic en una carta. Mira qué viaja al servidor.</p>
+    </header>
+
+    <!-- El tablero. Cada botón es una carta.
+         data-carta guarda el emoji: es la forma limpia de adjuntar
+         datos a un elemento HTML (mejor que leer el texto interno). -->
+    <section class="tablero" id="tablero">
+      <button class="carta" data-carta="🍎">🍎</button>
+      <button class="carta" data-carta="🍌">🍌</button>
+      <button class="carta" data-carta="🍇">🍇</button>
+      <button class="carta" data-carta="🍓">🍓</button>
+      <button class="carta" data-carta="🍎">🍎</button>
+      <button class="carta" data-carta="🍌">🍌</button>
+      <button class="carta" data-carta="🍇">🍇</button>
+      <button class="carta" data-carta="🍓">🍓</button>
+    </section>
+
+    <!-- Aquí script.js escribirá la respuesta del servidor.
+         Es el "return" visible de tu doPost. -->
+    <section class="consola" id="consola">
+      <p class="consola-vacia">Esperando tu primer movimiento…</p>
+    </section>
+  </main>
+
+  <!-- En Apps Script el JS del cliente vive dentro del mismo .html
+       o lo incluyes con <?!= include('js') ?>.
+       Aquí es un archivo separado que el navegador pide a Express. -->
+  <script src="script.js"></script>
+</body>
+</html>

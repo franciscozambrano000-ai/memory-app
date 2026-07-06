@@ -1,0 +1,89 @@
+/* ============================================================
+   style.css → CSS puro y normal. Nada especial de Node aquí.
+   El navegador lo pide y Express lo entrega desde /public.
+   ============================================================ */
+
+:root {
+  --fondo: #10141c;
+  --panel: #1a2130;
+  --carta: #232c40;
+  --carta-hover: #2e3a55;
+  --acento: #4fd1a5;      /* verde: éxito de la petición */
+  --texto: #e8ecf4;
+  --texto-suave: #8b95ab;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: var(--fondo);
+  color: var(--texto);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  padding: 24px;
+}
+
+.tablero-wrap { width: min(480px, 100%); }
+
+header { text-align: center; margin-bottom: 28px; }
+
+.etiqueta {
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: var(--acento);
+  margin-bottom: 8px;
+}
+
+h1 { font-size: 32px; font-weight: 700; }
+
+.subtitulo { color: var(--texto-suave); margin-top: 6px; font-size: 14px; }
+
+/* Tablero 4x2 */
+.tablero {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+}
+
+.carta {
+  aspect-ratio: 3 / 4;
+  font-size: 34px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: var(--carta);
+  cursor: pointer;
+  transition: transform .12s ease, background .12s ease;
+}
+
+.carta:hover { background: var(--carta-hover); transform: translateY(-3px); }
+
+/* Estado que agrega script.js mientras espera al servidor */
+.carta.enviando {
+  border-color: var(--acento);
+  transform: scale(.95);
+}
+
+/* La "consola" donde pintamos la respuesta JSON del servidor */
+.consola {
+  margin-top: 24px;
+  background: var(--panel);
+  border-radius: 12px;
+  padding: 16px 18px;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 13px;
+  min-height: 72px;
+}
+
+.consola-vacia { color: var(--texto-suave); }
+
+.respuesta-ok { color: var(--acento); margin-bottom: 6px; }
+
+.respuesta-json {
+  color: var(--texto-suave);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.respuesta-error { color: #ff7a7a; }
