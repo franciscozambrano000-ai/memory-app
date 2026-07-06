@@ -1,78 +1,86 @@
 // ============================================================
-// server.js  →  Este archivo es tu "Code.gs"
-// Es el ÚNICO archivo que se ejecuta en el servidor (Node.js).
-// Todo lo demás (public/) se envía al navegador tal cual.
+// server.js v2 — ahora con memoria (PostgreSQL en Neon)
 // ============================================================
 
-// 1. Importar Express.
-//    En Apps Script las librerías (SpreadsheetApp, ContentService...)
-//    ya vienen cargadas. En Node.js TÚ decides qué importar.
+// Cargar el archivo .env hacia process.env (SIEMPRE primero de todo)
+require('dotenv').config();
+
 const express = require('express');
+const { Pool } = require('pg');
 
-// 2. Crear la aplicación.
-//    Piensa en "app" como tu proyecto de Apps Script completo:
-//    el objeto donde vas a colgar tus doGet/doPost.
 const app = express();
-
-// 3. MIDDLEWARE: express.json()
-//    En Apps Script, e.postData.contents llega como TEXTO y tú haces
-//    JSON.parse(e.postData.contents) a mano.
-//    Esta línea le dice a Express: "haz ese JSON.parse automáticamente
-//    en cada petición que llegue con Content-Type: application/json".
-//    Gracias a esto, req.body ya es un objeto JavaScript listo para usar.
 app.use(express.json());
-
-// 4. Servir la carpeta /public automáticamente.
-//    En Apps Script usas HtmlService.createHtmlOutputFromFile('index')
-//    para entregar tu HTML. Aquí, con UNA línea, Express entrega
-//    index.html, style.css y script.js sin que escribas nada más.
-//    Si el navegador pide "/", Express busca public/index.html solo.
 app.use(express.static('public'));
 
-// 5. RUTA POST: /api/movimiento
-//    Esto es tu doPost(e), pero con una gran diferencia:
-//    en Apps Script solo existe UN doPost para todo el proyecto
-//    y tienes que hacer if/else con e.parameter para distinguir acciones.
-//    En Express puedes tener MUCHAS rutas, cada una con su propia URL:
-//    app.post('/api/movimiento'), app.post('/api/jugador'), etc.
-app.post('/api/movimiento', (req, res) => {
-
-  // req.body  →  equivale a JSON.parse(e.postData.contents)
-  // pero ya viene parseado gracias a express.json() (paso 3).
-  const datos = req.body;
-
-  // console.log aquí NO sale en el navegador.
-  // Sale en la TERMINAL donde ejecutaste "node server.js".
-  // Es el equivalente a Logger.log() / console.log() de Apps Script,
-  // pero lo ves EN VIVO, sin abrir "Ejecuciones".
-  console.log('📥 Movimiento recibido:');
-  console.log(`   Jugador:    ${datos.jugador}`);
-  console.log(`   Movimiento: ${datos.movimiento}`);
-  console.log(`   Carta:      ${datos.carta}`);
-  console.log(`   Hora:       ${datos.hora}`);
-
-  // res.json()  →  equivale a:
-  //   ContentService.createTextOutput(JSON.stringify(objeto))
-  //     .setMimeType(ContentService.MimeType.JSON)
-  // Express hace el stringify y pone el Content-Type por ti.
-  res.json({
-    ok: true,
-    mensaje: `Movimiento registrado: ${datos.carta} de ${datos.jugador}`,
-    datos: {
-      jugador: datos.jugador,
-      movimiento: datos.movimiento,
-      carta: datos.carta
-    }
-  });
+// ------------------------------------------------------------
+// CONEXIÓN A LA BASE DE DATOS
+// Un "Pool" es un grupo de conexiones reutilizables.
+// Abrir una conexión a Postgres es costoso (viaje a São Paulo,
+// autenticación, cifrado); el Pool abre unas pocas y las presta
+// a cada petición que llega. Equivalente Apps Script:
+// SpreadsheetApp.openByUrl(...) pero hecho una sola vez y bien.
+// ------------------------------------------------------------
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL, // tu secreto, leído del entorno
+  ssl: { rejectUnauthorized: false }          // Neon exige conexión cifrada
 });
 
-// 6. Encender el servidor.
-//    Apps Script no tiene esto: Google "enciende" tu script por ti
-//    cuando alguien llama a tu URL /exec.
-//    En Node.js TÚ eres el servidor. Esta línea deja el proceso
-//    escuchando en el puerto 3000 hasta que lo detengas con Ctrl+C.
+// ------------------------------------------------------------
+// POST /api/movimiento — ahora ESCRIBE en la base
+// ------------------------------------------------------------
+app.post('/api/movimiento', async (req, res) => {
+  const datos = req.body;
+
+  try {
+    // Equivalente Apps Script:
+    //   hoja.appendRow([datos.jugador, datos.movimiento, datos.carta])
+    //
+    // Los $1, $2, $3 son "parámetros": pg inserta los valores de
+    // forma SEGURA. NUNCA construyas SQL pegando texto del usuario
+    // (`INSERT ... VALUES ('${datos.jugador}')`) — eso abre la
+    // puerta al ataque más famoso de la historia: SQL Injection.
+    //
+    // RETURNING * = "devuélveme la fila recién creada completa",
+    // incluyendo el id y la hora que Postgres generó solo.
+    const resultado = await pool.query(
+      'INSERT INTO movimientos (jugador, movimiento, carta) VALUES ($1, $2, $3) RETURNING *',
+      [datos.jugador, datos.movimiento, datos.carta]
+    );
+
+    const filaGuardada = resultado.rows[0];
+    console.log('💾 Guardado en Postgres:', filaGuardada);
+
+    res.json({
+      ok: true,
+      mensaje: `Movimiento ${filaGuardada.id} guardado para siempre 🗄️`,
+      datos: filaGuardada
+    });
+
+  } catch (error) {
+    // Si la base rechaza algo (tipo incorrecto, caída de red...)
+    console.error('❌ Error de base de datos:', error.message);
+    res.status(500).json({ ok: false, mensaje: 'Error al guardar en la base de datos' });
+  }
+});
+
+// ------------------------------------------------------------
+// GET /api/movimientos — NUEVO: leer el historial
+// Equivalente Apps Script: hoja.getDataRange().getValues()
+// pero con superpoderes: ORDER BY ordena, LIMIT recorta.
+// ------------------------------------------------------------
+app.get('/api/movimientos', async (req, res) => {
+  try {
+    const resultado = await pool.query(
+      'SELECT * FROM movimientos ORDER BY id DESC LIMIT 20'
+    );
+    res.json({ ok: true, total: resultado.rowCount, movimientos: resultado.rows });
+  } catch (error) {
+    console.error('❌ Error de base de datos:', error.message);
+    res.status(500).json({ ok: false, mensaje: 'Error al leer la base de datos' });
+  }
+});
+
 const PUERTO = process.env.PORT || 3000;
 app.listen(PUERTO, () => {
   console.log(`✅ Servidor corriendo en http://localhost:${PUERTO}`);
-  console.log('   (Ctrl+C para detenerlo)');
 });
