@@ -1,10 +1,7 @@
 // ============================================================
-// server.js v2 — ahora con memoria (PostgreSQL en Neon)
+// server.js v3 — jugadores + pares de cartas + historial con JOIN
 // ============================================================
-
-// Cargar el archivo .env hacia process.env (SIEMPRE primero de todo)
 require('dotenv').config();
-
 const express = require('express');
 const { Pool } = require('pg');
 
@@ -12,71 +9,99 @@ const app = express();
 app.use(express.json());
 app.use(express.static('public'));
 
-// ------------------------------------------------------------
-// CONEXIÓN A LA BASE DE DATOS
-// Un "Pool" es un grupo de conexiones reutilizables.
-// Abrir una conexión a Postgres es costoso (viaje a São Paulo,
-// autenticación, cifrado); el Pool abre unas pocas y las presta
-// a cada petición que llega. Equivalente Apps Script:
-// SpreadsheetApp.openByUrl(...) pero hecho una sola vez y bien.
-// ------------------------------------------------------------
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL, // tu secreto, leído del entorno
-  ssl: { rejectUnauthorized: false }          // Neon exige conexión cifrada
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
 });
 
 // ------------------------------------------------------------
-// POST /api/movimiento — ahora ESCRIBE en la base
+// POST /api/jugador — el "mini login"
+// Recibe { nombre } y devuelve la fila del jugador (con su id).
 // ------------------------------------------------------------
-app.post('/api/movimiento', async (req, res) => {
-  const datos = req.body;
+app.post('/api/jugador', async (req, res) => {
+  const { nombre } = req.body;
+
+  // Validación en el servidor: NUNCA confíes solo en el HTML.
+  // (El required del input se puede saltar con F12; esto no.)
+  if (!nombre || !nombre.trim()) {
+    return res.status(400).json({ ok: false, mensaje: 'El nombre es obligatorio' });
+  }
 
   try {
-    // Equivalente Apps Script:
-    //   hoja.appendRow([datos.jugador, datos.movimiento, datos.carta])
-    //
-    // Los $1, $2, $3 son "parámetros": pg inserta los valores de
-    // forma SEGURA. NUNCA construyas SQL pegando texto del usuario
-    // (`INSERT ... VALUES ('${datos.jugador}')`) — eso abre la
-    // puerta al ataque más famoso de la historia: SQL Injection.
-    //
-    // RETURNING * = "devuélveme la fila recién creada completa",
-    // incluyendo el id y la hora que Postgres generó solo.
+    // ON CONFLICT = "upsert": si el nombre ya existe (gracias al
+    // UNIQUE de la tabla), no crees un duplicado — devuélveme al
+    // jugador existente. Así "Antonella" siempre es la misma fila,
+    // juegue hoy o la próxima semana.
+    // Equivalente Apps Script: buscar el nombre en la hoja con un
+    // bucle, y solo hacer appendRow si no está. Aquí: una línea.
     const resultado = await pool.query(
-      'INSERT INTO movimientos (jugador, movimiento, carta) VALUES ($1, $2, $3) RETURNING *',
-      [datos.jugador, datos.movimiento, datos.carta]
+      `INSERT INTO jugadores (nombre) VALUES ($1)
+       ON CONFLICT (nombre) DO UPDATE SET nombre = EXCLUDED.nombre
+       RETURNING *`,
+      [nombre.trim()]
     );
 
-    const filaGuardada = resultado.rows[0];
-    console.log('💾 Guardado en Postgres:', filaGuardada);
-
-    res.json({
-      ok: true,
-      mensaje: `Movimiento ${filaGuardada.id} guardado para siempre 🗄️`,
-      datos: filaGuardada
-    });
+    const jugador = resultado.rows[0];
+    console.log('👤 Jugador en sesión:', jugador.nombre, `(id ${jugador.id})`);
+    res.json({ ok: true, jugador });
 
   } catch (error) {
-    // Si la base rechaza algo (tipo incorrecto, caída de red...)
     console.error('❌ Error de base de datos:', error.message);
-    res.status(500).json({ ok: false, mensaje: 'Error al guardar en la base de datos' });
+    res.status(500).json({ ok: false, mensaje: 'Error al registrar jugador' });
   }
 });
 
 // ------------------------------------------------------------
-// GET /api/movimientos — NUEVO: leer el historial
-// Equivalente Apps Script: hoja.getDataRange().getValues()
-// pero con superpoderes: ORDER BY ordena, LIMIT recorta.
+// POST /api/movimiento — ahora registra un PAR de cartas
+// Recibe { jugador_id, carta1, carta2, acierto }
+// ------------------------------------------------------------
+app.post('/api/movimiento', async (req, res) => {
+  const { jugador_id, carta1, carta2, acierto } = req.body;
+
+  try {
+    // Nota que guardamos jugador_id (el número), no el nombre.
+    // El nombre vive UNA sola vez en la tabla jugadores; aquí
+    // solo apuntamos a él. Si Antonella corrige su nombre algún
+    // día, todos sus movimientos se actualizan solos.
+    const resultado = await pool.query(
+      `INSERT INTO movimientos (jugador_id, carta1, carta2, acierto)
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [jugador_id, carta1, carta2, acierto]
+    );
+
+    console.log('💾 Par guardado:', resultado.rows[0]);
+    res.json({ ok: true, movimiento: resultado.rows[0] });
+
+  } catch (error) {
+    console.error('❌ Error de base de datos:', error.message);
+    res.status(500).json({ ok: false, mensaje: 'Error al guardar el movimiento' });
+  }
+});
+
+// ------------------------------------------------------------
+// GET /api/movimientos — el historial, uniendo las DOS tablas
 // ------------------------------------------------------------
 app.get('/api/movimientos', async (req, res) => {
   try {
+    // JOIN = el VLOOKUP de SQL.
+    // La tabla movimientos solo tiene jugador_id (un número).
+    // El JOIN dice: "por cada movimiento, busca en jugadores la
+    // fila cuyo id coincida, y tráeme su nombre".
+    // En Sheets harías =BUSCARV(jugador_id, Jugadores!A:B, 2)
+    // en cada fila. Postgres lo hace para todas de un golpe.
     const resultado = await pool.query(
-      'SELECT * FROM movimientos ORDER BY id DESC LIMIT 20'
+      `SELECT m.id, j.nombre, m.carta1, m.carta2, m.acierto, m.hora
+       FROM movimientos m
+       JOIN jugadores j ON j.id = m.jugador_id
+       ORDER BY m.id DESC
+       LIMIT 20`
     );
+
     res.json({ ok: true, total: resultado.rowCount, movimientos: resultado.rows });
+
   } catch (error) {
     console.error('❌ Error de base de datos:', error.message);
-    res.status(500).json({ ok: false, mensaje: 'Error al leer la base de datos' });
+    res.status(500).json({ ok: false, mensaje: 'Error al leer el historial' });
   }
 });
 

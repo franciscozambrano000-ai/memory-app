@@ -1,6 +1,5 @@
 /* ============================================================
-   style.css → CSS puro y normal. Nada especial de Node aquí.
-   El navegador lo pide y Express lo entrega desde /public.
+   style.css v2 — login, cartas tapadas y historial
    ============================================================ */
 
 :root {
@@ -8,7 +7,8 @@
   --panel: #1a2130;
   --carta: #232c40;
   --carta-hover: #2e3a55;
-  --acento: #4fd1a5;      /* verde: éxito de la petición */
+  --acento: #4fd1a5;
+  --error: #ff7a7a;
   --texto: #e8ecf4;
   --texto-suave: #8b95ab;
 }
@@ -27,7 +27,7 @@ body {
 
 .tablero-wrap { width: min(480px, 100%); }
 
-header { text-align: center; margin-bottom: 28px; }
+header { text-align: center; margin-bottom: 24px; }
 
 .etiqueta {
   font-size: 11px;
@@ -38,9 +38,42 @@ header { text-align: center; margin-bottom: 28px; }
 
 h1 { font-size: 32px; font-weight: 700; }
 
-.subtitulo { color: var(--texto-suave); margin-top: 6px; font-size: 14px; }
+.subtitulo { color: var(--texto-suave); text-align: center; margin-bottom: 16px; font-size: 14px; }
+.subtitulo strong { color: var(--acento); }
 
-/* Tablero 4x2 */
+/* Utilidad: script.js agrega/quita esta clase para cambiar de pantalla */
+.oculto { display: none; }
+
+/* ---------- Login ---------- */
+.login-form { display: flex; gap: 10px; justify-content: center; }
+
+.login-form input {
+  flex: 1;
+  max-width: 240px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--carta-hover);
+  background: var(--panel);
+  color: var(--texto);
+  font-size: 15px;
+}
+
+.login-form input:focus { outline: 2px solid var(--acento); border-color: transparent; }
+
+.login-form button {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 10px;
+  background: var(--acento);
+  color: #0c2a1f;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.login-form button:hover { filter: brightness(1.1); }
+
+/* ---------- Tablero ---------- */
 .tablero {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -53,37 +86,59 @@ h1 { font-size: 32px; font-weight: 700; }
   border: 1px solid transparent;
   border-radius: 12px;
   background: var(--carta);
+  color: var(--texto-suave);
   cursor: pointer;
-  transition: transform .12s ease, background .12s ease;
+  transition: transform .15s ease, background .15s ease;
 }
 
 .carta:hover { background: var(--carta-hover); transform: translateY(-3px); }
 
-/* Estado que agrega script.js mientras espera al servidor */
-.carta.enviando {
+/* Carta volteada (mostrando su figura) */
+.carta.volteada {
+  background: var(--panel);
   border-color: var(--acento);
-  transform: scale(.95);
+  transform: scale(1.03);
 }
 
-/* La "consola" donde pintamos la respuesta JSON del servidor */
-.consola {
-  margin-top: 24px;
+/* Par encontrado: se queda revelada y deja de ser clicable */
+.carta.acertada {
+  background: var(--panel);
+  border-color: var(--acento);
+  opacity: .55;
+  cursor: default;
+  transform: none;
+}
+
+/* ---------- Historial ---------- */
+.titulo-historial {
+  margin: 28px 0 12px;
+  font-size: 15px;
+  color: var(--texto-suave);
+  font-weight: 600;
+}
+
+.historial {
+  list-style: none;
   background: var(--panel);
   border-radius: 12px;
-  padding: 16px 18px;
-  font-family: 'Consolas', 'Courier New', monospace;
-  font-size: 13px;
-  min-height: 72px;
+  padding: 8px 0;
+  max-height: 260px;
+  overflow-y: auto;
 }
 
-.consola-vacia { color: var(--texto-suave); }
-
-.respuesta-ok { color: var(--acento); margin-bottom: 6px; }
-
-.respuesta-json {
-  color: var(--texto-suave);
-  white-space: pre-wrap;
-  word-break: break-all;
+.historial li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px;
+  font-size: 14px;
+  border-bottom: 1px solid rgba(255,255,255,.04);
 }
 
-.respuesta-error { color: #ff7a7a; }
+.historial li:last-child { border-bottom: none; }
+
+.historial .nombre { color: var(--acento); font-weight: 600; min-width: 90px; }
+.historial .cartas { font-size: 18px; letter-spacing: 4px; }
+.historial .resultado-ok { color: var(--acento); margin-left: auto; font-size: 12px; }
+.historial .resultado-no { color: var(--error); margin-left: auto; font-size: 12px; }
+.historial-vacio { color: var(--texto-suave); justify-content: center; }
