@@ -3,41 +3,49 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Memory Cards · Node.js Lab</title>
+  <title>Memory Cards · Duelo</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
   <main class="tablero-wrap">
     <header>
-      <p class="etiqueta">LABORATORIO · HTML ↔ EXPRESS ↔ POSTGRES</p>
+      <p class="etiqueta">LABORATORIO · MULTIJUGADOR</p>
       <h1>Memory Cards</h1>
     </header>
 
-    <!-- ============================================
-         PANTALLA 1: el mini login
-         Solo un nombre y un botón. Al entrar, esta
-         sección se oculta y aparece el juego.
-         ============================================ -->
+    <!-- PANTALLA 1: login -->
     <section id="pantalla-login">
-      <p class="subtitulo">¿Quién juega hoy?</p>
+      <p class="subtitulo">¿Quién eres?</p>
       <div class="login-form">
         <input type="text" id="input-nombre" placeholder="Tu nombre" maxlength="30" />
-        <button id="btn-jugar">Jugar</button>
+        <button id="btn-jugar">Entrar</button>
       </div>
+      <p class="aviso" id="aviso-login"></p>
     </section>
 
-    <!-- ============================================
-         PANTALLA 2: el juego (oculta al inicio)
-         El tablero se construye desde script.js con
-         las cartas barajadas — por eso está vacío aquí.
-         ============================================ -->
-    <section id="pantalla-juego" class="oculto">
-      <p class="subtitulo">Jugando: <strong id="nombre-jugador"></strong></p>
-      <div class="tablero" id="tablero"></div>
+    <!-- PANTALLA 2: esperando rival -->
+    <section id="pantalla-espera" class="oculto">
+      <p class="subtitulo">⏳ Esperando al segundo jugador…</p>
+      <p class="aviso">Comparte el link para que entre a la sala</p>
+    </section>
 
-      <h2 class="titulo-historial">Historial (desde São Paulo 🇧🇷)</h2>
-      <ul class="historial" id="historial">
+    <!-- PANTALLA 3: la partida -->
+    <section id="pantalla-juego" class="oculto">
+      <div class="marcador" id="marcador"></div>
+      <p class="turno" id="mensaje-turno"></p>
+      <div class="tablero" id="tablero"></div>
+    </section>
+
+    <!-- PANTALLA 4: final + ranking -->
+    <section id="pantalla-final" class="oculto">
+      <p class="emoji-final" id="emoji-final">🏆</p>
+      <h2 class="texto-final" id="texto-final"></h2>
+      <p class="marcador-final" id="marcador-final"></p>
+      <button id="btn-revancha">🔄 Revancha</button>
+
+      <h2 class="titulo-historial">🏅 Ranking histórico</h2>
+      <ul class="historial" id="ranking">
         <li class="historial-vacio">Cargando…</li>
       </ul>
     </section>

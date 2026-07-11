@@ -1,5 +1,5 @@
 /* ============================================================
-   style.css v2 — login, cartas tapadas y historial
+   style.css v3 — sala, turnos y pantalla de ganador
    ============================================================ */
 
 :root {
@@ -38,10 +38,9 @@ header { text-align: center; margin-bottom: 24px; }
 
 h1 { font-size: 32px; font-weight: 700; }
 
-.subtitulo { color: var(--texto-suave); text-align: center; margin-bottom: 16px; font-size: 14px; }
-.subtitulo strong { color: var(--acento); }
+.subtitulo { color: var(--texto-suave); text-align: center; margin-bottom: 16px; font-size: 15px; }
+.aviso { color: var(--texto-suave); text-align: center; margin-top: 12px; font-size: 13px; }
 
-/* Utilidad: script.js agrega/quita esta clase para cambiar de pantalla */
 .oculto { display: none; }
 
 /* ---------- Login ---------- */
@@ -60,7 +59,7 @@ h1 { font-size: 32px; font-weight: 700; }
 
 .login-form input:focus { outline: 2px solid var(--acento); border-color: transparent; }
 
-.login-form button {
+.login-form button, #btn-revancha {
   padding: 12px 24px;
   border: none;
   border-radius: 10px;
@@ -71,7 +70,36 @@ h1 { font-size: 32px; font-weight: 700; }
   cursor: pointer;
 }
 
-.login-form button:hover { filter: brightness(1.1); }
+.login-form button:hover, #btn-revancha:hover { filter: brightness(1.1); }
+
+/* ---------- Marcador y turnos ---------- */
+.marcador { display: flex; gap: 12px; justify-content: center; margin-bottom: 10px; }
+
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 8px 16px;
+  transition: border-color .2s, transform .2s;
+}
+
+.chip-activo { border-color: var(--acento); transform: scale(1.05); }
+
+.chip-nombre { font-size: 14px; font-weight: 600; }
+.chip-puntos {
+  background: var(--carta);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 14px;
+  color: var(--acento);
+  font-weight: 700;
+}
+
+.turno { text-align: center; color: var(--texto-suave); font-size: 14px; margin-bottom: 14px; min-height: 20px; }
+.turno-mio { color: var(--acento); font-weight: 700; }
 
 /* ---------- Tablero ---------- */
 .tablero {
@@ -82,7 +110,7 @@ h1 { font-size: 32px; font-weight: 700; }
 
 .carta {
   aspect-ratio: 3 / 4;
-  font-size: 34px;
+  font-size: 32px;
   border: 1px solid transparent;
   border-radius: 12px;
   background: var(--carta);
@@ -91,30 +119,35 @@ h1 { font-size: 32px; font-weight: 700; }
   transition: transform .15s ease, background .15s ease;
 }
 
-.carta:hover { background: var(--carta-hover); transform: translateY(-3px); }
+.carta:not(:disabled):hover { background: var(--carta-hover); transform: translateY(-3px); }
+.carta:disabled { cursor: default; }
 
-/* Carta volteada (mostrando su figura) */
 .carta.volteada {
   background: var(--panel);
   border-color: var(--acento);
   transform: scale(1.03);
 }
 
-/* Par encontrado: se queda revelada y deja de ser clicable */
 .carta.acertada {
   background: var(--panel);
   border-color: var(--acento);
-  opacity: .55;
-  cursor: default;
-  transform: none;
+  opacity: .5;
 }
 
-/* ---------- Historial ---------- */
+/* ---------- Pantalla final ---------- */
+#pantalla-final { text-align: center; }
+
+.emoji-final { font-size: 64px; margin: 10px 0; }
+.texto-final { font-size: 26px; margin-bottom: 6px; }
+.marcador-final { color: var(--texto-suave); font-size: 16px; margin-bottom: 18px; }
+
+/* ---------- Ranking ---------- */
 .titulo-historial {
   margin: 28px 0 12px;
   font-size: 15px;
   color: var(--texto-suave);
   font-weight: 600;
+  text-align: center;
 }
 
 .historial {
@@ -124,13 +157,14 @@ h1 { font-size: 32px; font-weight: 700; }
   padding: 8px 0;
   max-height: 260px;
   overflow-y: auto;
+  text-align: left;
 }
 
 .historial li {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px 16px;
+  padding: 10px 16px;
   font-size: 14px;
   border-bottom: 1px solid rgba(255,255,255,.04);
 }
@@ -138,7 +172,6 @@ h1 { font-size: 32px; font-weight: 700; }
 .historial li:last-child { border-bottom: none; }
 
 .historial .nombre { color: var(--acento); font-weight: 600; min-width: 90px; }
-.historial .cartas { font-size: 18px; letter-spacing: 4px; }
-.historial .resultado-ok { color: var(--acento); margin-left: auto; font-size: 12px; }
-.historial .resultado-no { color: var(--error); margin-left: auto; font-size: 12px; }
+.historial .cartas { font-size: 18px; }
+.historial .stats { margin-left: auto; color: var(--texto-suave); font-size: 12px; }
 .historial-vacio { color: var(--texto-suave); justify-content: center; }

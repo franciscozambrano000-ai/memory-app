@@ -1,26 +1,45 @@
 // ============================================================
-// script.js v2 — corre en el NAVEGADOR
-// Flujo: login → tablero barajado → volteo por pares →
-//        guardar par en DB → refrescar historial desde la DB
+// script.js v3 — el navegador como "pantalla" de la sala
+//
+// Cambio de filosofía respecto a la v2:
+//   ANTES: el navegador ERA el juego (barajaba, resolvía pares)
+//   AHORA: el navegador solo PREGUNTA y PINTA. Cada ~1 segundo
+//          pide el estado al servidor ("polling") y redibuja.
+// Así los dos jugadores ven exactamente lo mismo: la única
+// verdad vive en el servidor.
 // ============================================================
 
-// ---------- Estado del juego ----------
-const CARTAS_BASE = ['🍎', '🍌', '🍇', '🍓'];   // 4 figuras → 8 cartas (pares)
-let jugador = null;          // { id, nombre } que devuelva el servidor
-let seleccionadas = [];      // las cartas volteadas ahora mismo (máx 2)
-let bloqueado = false;       // true mientras se resuelve un par (evita clics extra)
+let jugador = null;        // { id, nombre }
+let ultimoEstado = '';     // para no redibujar si nada cambió
+let poller = null;         // el setInterval del polling
 
 // ---------- Referencias al DOM ----------
-const pantallaLogin = document.getElementById('pantalla-login');
-const pantallaJuego = document.getElementById('pantalla-juego');
-const inputNombre   = document.getElementById('input-nombre');
-const btnJugar      = document.getElementById('btn-jugar');
-const nombreJugador = document.getElementById('nombre-jugador');
-const tablero       = document.getElementById('tablero');
-const historial     = document.getElementById('historial');
+const pantallas = {
+  login:  document.getElementById('pantalla-login'),
+  espera: document.getElementById('pantalla-espera'),
+  juego:  document.getElementById('pantalla-juego'),
+  final:  document.getElementById('pantalla-final')
+};
+const inputNombre  = document.getElementById('input-nombre');
+const btnJugar     = document.getElementById('btn-jugar');
+const avisoLogin   = document.getElementById('aviso-login');
+const marcador     = document.getElementById('marcador');
+const mensajeTurno = document.getElementById('mensaje-turno');
+const tablero      = document.getElementById('tablero');
+const emojiFinal   = document.getElementById('emoji-final');
+const textoFinal   = document.getElementById('texto-final');
+const marcadorFinal = document.getElementById('marcador-final');
+const btnRevancha  = document.getElementById('btn-revancha');
+const ranking      = document.getElementById('ranking');
+
+function mostrarPantalla(nombre) {
+  for (const [clave, seccion] of Object.entries(pantallas)) {
+    seccion.classList.toggle('oculto', clave !== nombre);
+  }
+}
 
 // ============================================================
-// 1. LOGIN
+// 1. LOGIN → ENTRAR A LA SALA
 // ============================================================
 btnJugar.addEventListener('click', entrar);
 inputNombre.addEventListener('keydown', (e) => { if (e.key === 'Enter') entrar(); });
@@ -30,150 +49,155 @@ async function entrar() {
   if (!nombre) { inputNombre.focus(); return; }
 
   try {
-    // Registramos (o recuperamos) al jugador en la tabla jugadores.
-    // El servidor nos devuelve su fila, incluyendo el id — ese
-    // número es lo que usaremos para firmar cada movimiento.
-    const respuesta = await fetch('/api/jugador', {
+    // Paso 1: registrar/recuperar al jugador en la DB
+    const r1 = await fetch('/api/jugador', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ nombre })
     });
-    const datos = await respuesta.json();
-    if (!datos.ok) { alert(datos.mensaje); return; }
+    const d1 = await r1.json();
+    if (!d1.ok) { avisoLogin.textContent = d1.mensaje; return; }
+    jugador = d1.jugador;
 
-    jugador = datos.jugador;
-    nombreJugador.textContent = jugador.nombre;
-
-    // Cambio de pantalla: ocultar login, mostrar juego
-    pantallaLogin.classList.add('oculto');
-    pantallaJuego.classList.remove('oculto');
-
-    construirTablero();
-    cargarHistorial();
-
-  } catch (error) {
-    alert('No pude hablar con el servidor. ¿Está corriendo?');
-  }
-}
-
-// ============================================================
-// 2. CONSTRUIR EL TABLERO (barajado)
-// ============================================================
-function construirTablero() {
-  // Duplicar las figuras (pares) y barajar.
-  // sort con Math.random() es el barajado más simple que existe:
-  // suficiente para este juego.
-  const mazo = [...CARTAS_BASE, ...CARTAS_BASE].sort(() => Math.random() - 0.5);
-
-  tablero.innerHTML = '';
-  for (const figura of mazo) {
-    const carta = document.createElement('button');
-    carta.className = 'carta';
-    carta.dataset.carta = figura;  // la figura vive escondida en el atributo
-    carta.textContent = '❓';      // lo que se VE: la carta tapada
-    tablero.appendChild(carta);
-  }
-}
-
-// Un solo listener para todo el tablero (delegación, como en v1)
-tablero.addEventListener('click', (evento) => {
-  const carta = evento.target.closest('.carta');
-  if (!carta) return;
-  if (bloqueado) return;                              // hay un par resolviéndose
-  if (carta.classList.contains('volteada')) return;   // ya está volteada
-  if (carta.classList.contains('acertada')) return;   // ya se emparejó antes
-
-  voltear(carta);
-});
-
-function voltear(carta) {
-  carta.textContent = carta.dataset.carta;  // revelar la figura
-  carta.classList.add('volteada');
-  seleccionadas.push(carta);
-
-  // ¿Ya hay dos? → resolver el par
-  if (seleccionadas.length === 2) resolverPar();
-}
-
-// ============================================================
-// 3. RESOLVER EL PAR → aquí (y SOLO aquí) hablamos con la DB
-// ============================================================
-async function resolverPar() {
-  bloqueado = true;
-  const [c1, c2] = seleccionadas;
-  const acierto = c1.dataset.carta === c2.dataset.carta;
-
-  // Guardar el par en PostgreSQL vía nuestro Express
-  try {
-    await fetch('/api/movimiento', {
+    // Paso 2: ocupar un asiento en la sala
+    const r2 = await fetch('/api/sala/entrar', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jugador_id: jugador.id,       // el número, no el nombre
-        carta1: c1.dataset.carta,
-        carta2: c2.dataset.carta,
-        acierto: acierto
-      })
+      body: JSON.stringify({ jugador_id: jugador.id, nombre: jugador.nombre })
     });
+    const d2 = await r2.json();
+    if (!d2.ok) { avisoLogin.textContent = d2.mensaje; return; } // sala llena
+
+    // Paso 3: empezar a "escuchar" la sala
+    render(d2.sala);
+    poller = setInterval(refrescar, 1000);
+
   } catch (error) {
-    console.error('No se pudo guardar el movimiento:', error);
-  }
-
-  if (acierto) {
-    // Par encontrado: se quedan reveladas para siempre
-    c1.classList.replace('volteada', 'acertada');
-    c2.classList.replace('volteada', 'acertada');
-    finalizarTurno();
-  } else {
-    // Fallo: se muestran un momento y se vuelven a tapar
-    setTimeout(() => {
-      for (const c of [c1, c2]) {
-        c.textContent = '❓';
-        c.classList.remove('volteada');
-      }
-      finalizarTurno();
-    }, 900);
+    avisoLogin.textContent = 'No pude hablar con el servidor 😢';
   }
 }
 
-function finalizarTurno() {
-  seleccionadas = [];
-  bloqueado = false;
-  cargarHistorial();  // refrescar la lista con el par recién guardado
-
-  // ¿Se acabaron las cartas? → nueva partida automática
-  const quedan = tablero.querySelectorAll('.carta:not(.acertada)').length;
-  if (quedan === 0) setTimeout(construirTablero, 1500);
-}
-
 // ============================================================
-// 4. HISTORIAL — leer la DB y pintarla
-// Este es tu "llamar la info de esa base de datos":
-// GET al endpoint → JSON con filas → HTML
+// 2. POLLING — preguntar el estado cada segundo
+// (La versión profesional de esto son los WebSockets, donde el
+//  servidor AVISA en vez de esperar la pregunta. Otro nivel 😉)
 // ============================================================
-async function cargarHistorial() {
+async function refrescar() {
   try {
-    const respuesta = await fetch('/api/movimientos');
+    const respuesta = await fetch('/api/sala/estado');
+    const datos = await respuesta.json();
+    if (datos.ok) render(datos.sala);
+  } catch (error) { /* si falla un ciclo, el siguiente lo intenta */ }
+}
+
+// ============================================================
+// 3. RENDER — pintar lo que el servidor diga
+// ============================================================
+function render(sala) {
+  // Optimización: si el estado es idéntico al anterior, no redibujar
+  const firma = JSON.stringify(sala);
+  if (firma === ultimoEstado) return;
+  ultimoEstado = firma;
+
+  if (sala.estado === 'esperando') { mostrarPantalla('espera'); return; }
+  if (sala.estado === 'terminada') { renderFinal(sala); return; }
+
+  // --- estado: jugando ---
+  mostrarPantalla('juego');
+  const esMiTurno = sala.turno_id === jugador.id;
+
+  // Marcador: chip por jugador, resaltado el que mueve
+  marcador.innerHTML = sala.jugadores.map(j => `
+    <div class="chip ${j.id === sala.turno_id ? 'chip-activo' : ''}">
+      <span class="chip-nombre">${j.nombre}</span>
+      <span class="chip-puntos">${j.puntos}</span>
+    </div>
+  `).join('');
+
+  mensajeTurno.textContent = esMiTurno ? '✋ ¡Tu turno!' : `Turno de ${nombreEnTurno(sala)}…`;
+  mensajeTurno.className = esMiTurno ? 'turno turno-mio' : 'turno';
+
+  // Tablero: el servidor manda cada carta con su estado.
+  // Las tapadas llegan SIN figura — el secreto nunca sale de allá.
+  tablero.innerHTML = sala.cartas.map((c, i) => `
+    <button class="carta ${c.estado === 'volteada' ? 'volteada' : ''} ${c.estado === 'emparejada' ? 'acertada' : ''}"
+            data-indice="${i}" ${!esMiTurno || c.estado !== 'tapada' ? 'disabled' : ''}>
+      ${c.figura ?? '❓'}
+    </button>
+  `).join('');
+}
+
+function nombreEnTurno(sala) {
+  const j = sala.jugadores.find(x => x.id === sala.turno_id);
+  return j ? j.nombre : '…';
+}
+
+// ============================================================
+// 4. VOLTEAR — pedirle el movimiento al árbitro
+// ============================================================
+tablero.addEventListener('click', async (evento) => {
+  const carta = evento.target.closest('.carta');
+  if (!carta || carta.disabled) return;
+
+  try {
+    const respuesta = await fetch('/api/sala/voltear', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jugador_id: jugador.id, indice: Number(carta.dataset.indice) })
+    });
+    const datos = await respuesta.json();
+    if (datos.ok) render(datos.sala); // pintar YA, sin esperar al próximo poll
+  } catch (error) { /* el polling corregirá cualquier desfase */ }
+});
+
+// ============================================================
+// 5. FINAL — emojis de ganador + ranking desde la DB
+// ============================================================
+function renderFinal(sala) {
+  mostrarPantalla('final');
+  const [j1, j2] = sala.jugadores;
+
+  if (sala.ganador === 'empate') {
+    emojiFinal.textContent = '🤝';
+    textoFinal.textContent = '¡Empate!';
+  } else if (sala.ganador === jugador.nombre) {
+    emojiFinal.textContent = '🏆🎉';
+    textoFinal.textContent = `¡Ganaste, ${jugador.nombre}!`;
+  } else {
+    emojiFinal.textContent = '👏';
+    textoFinal.textContent = `Ganó ${sala.ganador}`;
+  }
+
+  marcadorFinal.textContent = `${j1.nombre} ${j1.puntos} — ${j2.puntos} ${j2.nombre}`;
+  cargarRanking();
+}
+
+btnRevancha.addEventListener('click', async () => {
+  await fetch('/api/sala/reiniciar', { method: 'POST' });
+  ultimoEstado = ''; // forzar redibujo
+  refrescar();
+});
+
+async function cargarRanking() {
+  try {
+    const respuesta = await fetch('/api/ranking');
     const datos = await respuesta.json();
 
-    if (!datos.ok || datos.movimientos.length === 0) {
-      historial.innerHTML = '<li class="historial-vacio">Aún no hay movimientos</li>';
+    if (!datos.ok || datos.ranking.length === 0) {
+      ranking.innerHTML = '<li class="historial-vacio">Aún no hay partidas</li>';
       return;
     }
 
-    // Convertir cada fila de Postgres en un <li>.
-    // map = transformar cada elemento; join('') = unir todo en un solo texto.
-    historial.innerHTML = datos.movimientos.map(m => `
+    const medallas = ['🥇', '🥈', '🥉'];
+    ranking.innerHTML = datos.ranking.map((r, i) => `
       <li>
-        <span class="nombre">${m.nombre}</span>
-        <span class="cartas">${m.carta1} ${m.carta2}</span>
-        <span class="${m.acierto ? 'resultado-ok' : 'resultado-no'}">
-          ${m.acierto ? '✔ par' : '✘ fallo'}
-        </span>
+        <span class="cartas">${medallas[i] ?? '🎖️'}</span>
+        <span class="nombre">${r.nombre}</span>
+        <span class="stats">${r.victorias} 🏆 · ${r.partidas} partidas · ${r.pares} pares</span>
       </li>
     `).join('');
 
   } catch (error) {
-    historial.innerHTML = '<li class="historial-vacio">Error al cargar el historial</li>';
+    ranking.innerHTML = '<li class="historial-vacio">Error al cargar el ranking</li>';
   }
 }
